@@ -1,0 +1,113 @@
+---
+title: "Practical Machine Learning - project"
+output: html_document
+---
+
+## Synopsis
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, we use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The objective of this exercise is to build and train a model using the training set from 6 participants. The model will then be used on cross validation data set and the testing data set. 
+
+## Setup 
+Here we load needed packages, set the current working directory, and then read training and testing data set.
+```{r}
+suppressMessages(library(dplyr))
+suppressMessages(library(caret))
+suppressMessages(library(randomForest))
+
+set.seed(123456)
+
+setwd("~/Documents/Courses/Coursera/Data Science Specialization/Practical Machine Learning/Project")
+trainingSet <- read.csv("pml-training.csv", header=T, sep=",")
+testingSet <- read.csv("pml-testing.csv", header=T, sep=",")
+
+```
+
+## Explore data
+Here we do basic data exploration. It seems that our training data set has 19622 observations of 160 features. The outcome is defined in a feature called classe. It is a Factor with 5 levels as follows:  
+  * A - from exactly according to the specification   
+  * B - throwing the elbows to the front  
+  * C - lifting the dumbbell only halfway   
+  * D - lowering the dumbbell only halfway   
+  * E - throwing the hips to the front  
+```{r}  
+dim(trainingSet)
+dim(testingSet)
+str(trainingSet)
+```
+
+## Tidy data
+After exploring training and testing data set, we can see that there are a bunch of features in the testing data set that have all values of NA. Since these features cannot influence the outcome of the test set, we should remove these features from the training and testing set.
+```{r}
+# Find all features in testing data set that have all values of NA
+NAfeatures <- apply(testingSet, 2, function(x) {sum(is.na(x))})
+
+# Remove features from both testing set and training set that have NA's. 
+trainingSet <- trainingSet[, which(NAfeatures == 0)]
+testingSet <- testingSet[, which(NAfeatures == 0)]
+
+# There are other features such as, X, user_name, raw_timestamp_part_1, raw_timestamp_part_2,
+# cvtd_timestamp, new_window and num_window that play no part in the predicting the output.
+# We delete these features from the training and testing set as well
+exclude <- c(1,2,3,4,5,6,7)
+trainingSet <- trainingSet[, -exclude]
+testingSet <- testingSet[, -exclude]
+
+# Dimension of our final training and testing data set
+dim(trainingSet)
+dim(testingSet)
+```
+
+## Data partitioning
+Here we partition the training data set into two, a larger section for training the model, and the smaller porton for cross validation
+```{r}
+inTrain <- createDataPartition(y=trainingSet$classe,p=0.75, list=FALSE)
+training <- trainingSet[inTrain,]
+crossValidate <- trainingSet[-inTrain,]
+```
+
+## Training the model
+Here we choose Random Forest. Two reasons for choosing this particular model
+  1. RF is highly accurate for multi-class classification modeling
+  2. I have already used SVM and other models in previous assignments, so I wanted to try a different model this time.
+```{r, cache=TRUE}
+ctrl <- trainControl(method = "cv", number=10, savePred=T)
+    
+modelRF <- train(classe ~ ., data = training,
+                          method = "rf",
+                          trControl = ctrl,
+                          preProc = c("center", "scale"),
+                          allowParallel = TRUE)
+
+print(modelRF)
+print(modelRF$finalModel)
+```
+
+## Cross Validating the model
+Here we use the trained model from above to predict the outcome on cross validation data
+```{r, cache=TRUE}
+cvPred <- predict(modelRF, newdata=crossValidate)
+confusionMatrix(cvPred, crossValidate$classe)
+```
+
+
+## Tesing the model on test data set
+Here we test the model on the 20 sample data in the test set
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+testPred <- predict(modelRF, newdata=testingSet)
+testPred
+```
+
+## Conclusion  
+The decision to choose Random Forest algorithm has been a good one. The accuracy of the model has been very high. The in sample error rate was 0.0066, while the out of sample error was less at 0.0061. This was a surprise as I was expecting the Out of sample error to be higher. Also, the accuracy on 20 sample test set was 100% i.e. out of sample error of 0.
+
+
+
